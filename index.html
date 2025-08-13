@@ -1,0 +1,757 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <!--metadatos-->
+    <meta charset="utf-8">
+    <meta name="author" content="Damian Conejos">
+    <meta name="description" content="Portafolio">
+    <meta name="keywords" content="HTML, CSS, Java, MySQL">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!--Titulo-->
+    <title>Damián Conejos | Desarrollo web Full-Stack </title>
+    <!--Favicon-->
+    <link rel="icon" type="image/x-icon" href="images/code-square.svg">
+    <!--css-->
+    <link href="css/estilos.css" rel="stylesheet">
+    <!--Bootstrap-->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <!-- Fuentes -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@300..700&family=Rubik+Dirt&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <!-- ===== Damian.AI (Gemini) – Bloque mínimo ===== -->
+
+<!-- Damian.AI Bubble -->
+<!-- HOOK opcional (si no existe, el script lo creará) -->
+<!-- Damian.AI – inline mejorado (multilenguaje + 1ª persona) -->
+<div id="damian-bubble-root"></div>
+<script type="module">
+const API_URL = 'https://damianai-worker.damian-ai.workers.dev/api/damianai';
+
+/* ===== Cargar CV del DOM ===== */
+function loadCV(){
+  try {
+    const raw = document.getElementById('damian-cv')?.textContent || '{}';
+    return JSON.parse(raw);
+  } catch { return {}; }
+}
+const CV = loadCV();
+
+/* ===== Perfil derivado (para atajos en el prompt) ===== */
+const PROFILE = {
+  name: CV?.basics?.name || 'Damián Conejos',
+  title: CV?.basics?.title || 'Desarrollador Full‑Stack e Integrador de IA',
+  location: CV?.basics?.location || 'Suiza',
+  availability: CV?.basics?.contact?.availability || 'Inmediata',
+  drivers: CV?.basics?.contact?.drivers_license || [],
+  languages: (CV?.basics?.languages || []).map(l=>`${l.name} (${l.level})`),
+  stacks: [
+    ...(CV?.skills?.programming || []),
+    ...(CV?.skills?.frameworks_tools || []),
+    ...(CV?.skills?.ai || []),
+    ...(CV?.skills?.cloud || [])
+  ],
+  projects: (CV?.projects || []).map(p=>({
+    name:p.name, tech:(p.tech||[]).join(', '),
+    summary: p.summary?.es || p.summary?.en || '',
+  }))
+};
+
+/* ===== i18n del UI del widget (no idiomas del sitio) ===== */
+const I18N = {
+  es: { title:'Damian.AI', hello:'¡Hola! Soy Damián (IA). Responderé en primera persona y sin inventar.',
+        placeholder:'Escribe tu mensaje…',
+        sugs:['¿Por qué deberíamos contratarte?','Proyectos destacados','Disponibilidad y permisos'] },
+  en: { title:'Damian.AI', hello:"Hi! I'm Damian (AI). I'll answer in first person and won’t make things up.",
+        placeholder:'Type your message…',
+        sugs:['Why should we hire you?','Highlighted projects','Availability & licenses'] },
+  de: { title:'Damian.AI', hello:'Hallo! Ich bin Damian (KI). Ich antworte in Ich‑Form und ohne Halluzination.',
+        placeholder:'Nachricht eingeben…',
+        sugs:['Warum sollten wir Sie einstellen?','Wichtige Projekte','Verfügbarkeit & Führerschein'] }
+};
+
+/* ===== util ===== */
+const getLang = () => (document.documentElement.getAttribute('lang') || 'en').slice(0,2);
+function watchLangChanges(onChange){
+  new MutationObserver(() => onChange(getLang()))
+    .observe(document.documentElement, { attributes:true, attributeFilter:['lang'] });
+}
+function getMiniBio() {
+  const el = document.querySelector('#texto-sobre-mi');
+  return el ? el.textContent.trim().replace(/\s+/g,' ').slice(0,1000) : '';
+}
+
+/* ===== Prompt con personalidad + plantillas ===== */
+function buildPrompt(userMsg, lang, history){
+  const t = lang==='de' ? 'DE' : (lang==='es' ? 'ES' : 'EN');
+
+  const tone = (t==='DE')
+    ? `Antworte in Deutsch, Ich‑Form, professionell, präzise, knapp; Geschäftsnutzen zuerst.`
+    : (t==='ES')
+      ? `Responde en español, en primera persona (yo), profesional, directo y conciso; valor de negocio primero.`
+      : `Answer in English, first person (I), professional, direct and concise; business value first.`;
+
+  // Hechos clave (evita alucinaciones)
+  const facts = [
+    `Vivo en la zona germanófona de Suiza y tengo 25 años; disponibilidad ${PROFILE.availability}.`,
+    `Idiomas: ${PROFILE.languages.join(', ')}.`,
+    `Formación: 2 años Imagen y Sonido, 2 años Animación/Juegos 2D-3D, 2 años Desarrollo Web/Multiplataforma; autoestudio en integración de IA.`,
+    `Experiencia: ventas energía solar (2a), hostelería (2a), profesor de ajedrez (1a), edición vídeo freelance (3a).`,
+    `Tecnologías: ${PROFILE.stacks.join(', ')}.`,
+    `Licencias: ${PROFILE.drivers.join(', ') || '—'}.`,
+    `Media académica IT: 8.5 (compatibilizada con trabajo).`
+  ].join('\n- ');
+
+  const projects = (PROFILE.projects||[]).map(p=>`- ${p.name} [${p.tech}] — ${p.summary}`).join('\n');
+
+  // MODIFICACIÓN 1: Instrucciones más claras para el formato de las respuestas.
+  const templates = `
+Templates:
+- Why hire me → Responde con 4-5 puntos CLAROS, cada uno en una nueva línea y empezando con un guion (-). NO los juntes en un solo párrafo.
+- Skills/stack → Agrupa por área (backend, frontend, etc.) usando viñetas claras.
+- Projects → Para cada proyecto, usa 2-3 viñetas para describir el contexto, la tecnología y el resultado.
+- Availability/licensing → Respuesta directa y concisa en una o dos líneas.
+- Swiss SMEs → Enfatiza eficiencia, claridad, soporte multilingüe y costes en una lista con guiones.
+- Si piden alemán: menciona que estoy aprendiéndolo (y que manejo EN/ES).`;
+
+  const historyText = history.slice(-6).map(m=>`${m.role}: ${m.content}`).join('\n');
+
+  return `${tone}
+
+Eres la versión IA de ${PROFILE.name}. Responde SIEMPRE en primera persona y NO inventes. 
+Usa saltos de línea y guiones (-) para crear listas claras en lugar de párrafos largos.
+Si faltan datos en el CV, dilo brevemente y pivota a fortalezas reales.
+
+Hechos clave (no inventar):
+- ${facts}
+
+Proyectos:
+${projects || '-'}
+
+Mini-bio desde la página:
+${getMiniBio()}
+
+${templates}
+
+Historial (reciente):
+${historyText}
+
+Usuario: ${userMsg}
+Recuerda: responde en ${t}, con ejemplos concretos y usando listas con guiones para mayor claridad. NO uses párrafos largos.`;
+}
+
+/* ===== UI del widget (igual que el tuyo, con mínimos toques) ===== */
+function ensureStyles(){
+  if (document.getElementById('__da_styles')) return;
+  const css = `
+  .dab-fab{position:fixed;right:18px;bottom:18px;width:56px;height:56px;border:none;border-radius:50%;
+  background:radial-gradient(120% 120% at 10% 10%,#0ea5e9 0,#10b981 60%,#3b82f6 100%);color:#fff;
+  box-shadow:0 10px 30px rgba(0,0,0,.12);cursor:pointer;z-index:9999}
+  .dab-panel{position:fixed;right:18px;bottom:84px;width:min(92vw,380px);height:520px;background:#fff;
+  border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.12);display:none;flex-direction:column;overflow:hidden;z-index:10000}
+  .dab-open{display:flex}
+  .dab-h{display:flex;gap:8px;align-items:center;padding:10px 12px;border-bottom:1px solid #e5e7eb}
+  .dab-av{width:24px;height:24px;border-radius:50%;background:linear-gradient(135deg,#0ea5e9,#10b981)}
+  .dab-b{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:10px;background:#f8fafc}
+  .dab-row{display:flex;gap:8px}
+  .dab-row.me{flex-direction:row-reverse}
+  .dab-bub{max-width:80%;padding:10px 12px;border-radius:12px;background:#fff;border:1px solid #e5e7eb;font-size:14px;line-height:1.35}
+  .dab-row.me .dab-bub{background:#eef6ff;border-color:#dbeafe}
+  .dab-a{display:flex;gap:8px;align-items:center;padding:10px;border-top:1px solid #e5e7eb;background:#fff}
+  .dab-in{flex:1;border:1px solid #e5e7eb;border-radius:12px;padding:10px 12px;font-size:14px}
+  .dab-send{border:none;border-radius:10px;background:#0ea5e9;color:#fff;padding:10px 12px;cursor:pointer}
+  .dab-sugs{display:flex;flex-wrap:wrap;gap:6px;padding:8px 12px;background:#fff;border-bottom:1px dashed #e5e7eb}
+  .dab-sug{font-size:12px;border:1px dashed #e5e7eb;border-radius:10px;padding:6px 8px;cursor:pointer;background:#fff}
+  @media(max-width:480px){.dab-panel{left:12px;right:12px;width:auto;height:65vh}}`;
+  const st=document.createElement('style'); st.id='__da_styles'; st.textContent=css; document.head.appendChild(st);
+}
+
+function renderUI(lang){
+  ensureStyles();
+  const t = I18N[lang] || I18N.en;
+  const hook = document.getElementById('damian-bubble-root') || document.body.appendChild(Object.assign(document.createElement('div'),{id:'damian-bubble-root'}));
+  hook.innerHTML = `
+    <button class="dab-fab" id="dab-open" aria-label="Open Damian.AI">✦</button>
+    <section class="dab-panel" id="dab-panel" role="dialog" aria-modal="true">
+      <header class="dab-h"><div class="dab-av"></div><strong>${t.title}</strong></header>
+      <div class="dab-sugs" id="dab-sugs"></div>
+      <div class="dab-b" id="dab-body"></div>
+      <div class="dab-a">
+        <input id="dab-in" class="dab-in" placeholder="${t.placeholder}" autocomplete="off">
+        <button id="dab-send" class="dab-send">${lang==='de'?'Senden':(lang==='en'?'Send':'Enviar')}</button>
+      </div>
+    </section>`;
+
+  const open = document.getElementById('dab-open');
+  const panel= document.getElementById('dab-panel');
+  const body = document.getElementById('dab-body');
+  const input= document.getElementById('dab-in');
+  const send = document.getElementById('dab-send');
+  const sugs = document.getElementById('dab-sugs');
+
+  sugs.innerHTML='';
+  (t.sugs||[]).forEach(s=>{ const b=document.createElement('button'); b.className='dab-sug'; b.textContent=s; b.onclick=()=>sendMessage(s); sugs.appendChild(b); });
+  open.onclick=()=>{ panel.classList.toggle('dab-open'); input.focus(); };
+
+  const key='damianai_hist_v4';
+  const state={messages: JSON.parse(localStorage.getItem(key)||'[]')};
+  const save = ()=> localStorage.setItem(key, JSON.stringify(state.messages));
+
+  // MODIFICACIÓN 2: Procesar el texto de la IA para convertir Markdown a HTML.
+  function ui(role,text){
+    const row=document.createElement('div'); row.className='dab-row'+(role==='user'?' me':'');
+    const b=document.createElement('div'); b.className='dab-bub';
+    
+    // Convierte **negrita** a <strong>negrita</strong> y saltos de línea a <br>
+    const formattedText = (text || '')
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\n/g, '<br>');
+      
+    b.innerHTML = formattedText;
+    row.appendChild(b); body.appendChild(row); body.scrollTop=body.scrollHeight; return b;
+  }
+
+  async function callAPI(prompt){
+    const r = await fetch(API_URL,{ method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ prompt, lang, profile: PROFILE, cv: CV, miniBio: getMiniBio() }) });
+    if(!r.ok) throw new Error(await r.text()); return r.text();
+  }
+
+  async function sendMessage(text){
+    const cleanText = text.trim();
+    if (!cleanText) return;
+    input.value = '';
+    ui('user', cleanText); 
+    state.messages.push({role:'user',content:cleanText}); 
+    save();
+    
+    const hold = ui('assistant','…');
+    try{
+      const reply = await callAPI( buildPrompt(cleanText, lang, state.messages) );
+      // La función 'ui' ahora se encarga de formatear la respuesta
+      hold.innerHTML = reply.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+      state.messages.push({role:'assistant',content:reply}); save();
+    }catch(e){ hold.textContent = 'Error: '+e.message; }
+  }
+
+  send.onclick=()=>sendMessage(input.value);
+  input.addEventListener('keydown', e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send.onclick(); } });
+
+  if(state.messages.length===0){ ui('assistant', t.hello); } else { state.messages.slice(-10).forEach(m=>ui(m.role,m.content)); }
+
+  window.setLang = (L)=>{ document.documentElement.setAttribute('lang', L); };
+}
+
+function boot(){
+  renderUI(getLang());
+  watchLangChanges((L)=> renderUI(L));
+}
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot);
+else boot();
+</script>
+
+
+<script type="application/json" id="damian-cv">
+{
+  "basics": {
+    "name": "Damián Conejos",
+    "title": "Desarrollador Full‑Stack e Integrador de IA",
+    "location": "Cantón de habla alemana, Suiza",
+    "summary": {
+      "es": "Desarrollador web/multiplataforma centrado en integrar IA con resultados medibles. Vivo en el área germanófona de Suiza; busco mi primera oportunidad IT en CH. Disponibilidad inmediata.",
+      "en": "Web/multiplatform developer focused on integrating AI with measurable outcomes. Based in the German‑speaking part of Switzerland; seeking my first IT role in CH. Available immediately.",
+      "de": "Web-/Plattformentwickler mit Fokus auf KI‑Integration und messbare Ergebnisse. Wohnhaft in der Deutschschweiz; suche meine erste IT‑Position in der Schweiz. Sofort verfügbar."
+    },
+    "contact": {
+      "email": "damiconejos@gmail.com",
+      "drivers_license": ["B (coche)", "A (moto)"],
+      "availability": "Inmediata"
+    },
+    "languages": [
+      {"name":"Español","level":"Nativo"},
+      {"name":"Inglés","level":"Profesional"},
+      {"name":"Alemán","level":"Aprendiendo"}
+    ]
+  },
+
+  "education": [
+    {"program":"Imagen y Sonido","duration_years":2},
+    {"program":"Animación y creación de videojuegos 2D/3D","duration_years":2},
+    {"program":"Desarrollo de aplicaciones web y multiplataforma","duration_years":2},
+    {"program":"Autoestudio de Integración de IA en proyectos","duration_years":1}
+  ],
+
+  "experience": [
+    {
+      "role":"Vendedor (energías renovables – paneles solares)",
+      "duration_years":2,
+      "notes":[
+        "Financié mis estudios trabajando en ventas, siendo el primero en ventas los 2 años.",
+        "Desarrollé habilidades de comunicación y orientación a objetivos."
+      ]
+    },
+    {
+      "role":"Hostelería",
+      "duration_years":2,
+      "notes":[
+        "Work ethic, trato al cliente, trabajo bajo presión."
+      ]
+    },
+    {
+      "role":"Profesor de ajedrez (mientras estudiaba desarrollo IT)",
+      "duration_years":1,
+      "notes":[
+        "Planificación, pedagogía, pensamiento estructurado."
+      ]
+    },
+    {
+      "role":"Freelance edición de vídeo / redes sociales",
+      "duration_years":3,
+      "notes":[
+        "Postproducción, storytelling visual, entregas a clientes."
+      ]
+    }
+  ],
+
+  "places": [
+    {"place":"Dublín","activity":"Hostelería (1 año)"},
+    {"place":"Valencia","activity":"Estudios y trabajo como comercial"},
+    {"place":"Suiza (zona germanófona)","activity":"Trabajo en hostelería mientras busco oportunidad IT"}
+  ],
+
+  "skills": {
+    "programming": ["Java","JavaScript","HTML","CSS","SQL","MongoDB"],
+    "frameworks_tools": ["JavaFX","Swing","JUnit","Shell scripting","Docker","Git (consola / Git Bash)"],
+    "ai": ["Integración de IA en proyectos (Gemini)"],
+    "cloud": ["AWS (certificado)"]
+  },
+
+  "projects": [
+    {
+      "name": "ValenBici Map App",
+      "role": "Proyecto fin de carrera",
+      "summary": {
+        "es": "Mapa interactivo de estaciones ValenBici (Valencia) con datos en tiempo real.",
+        "en": "Interactive map of ValenBici bike stations (Valencia) with real-time data."
+      },
+      "tech": ["Java","JavaFX","JavaScript","XML","REST API","JSON"],
+      "level": "Intermedio"
+    },
+    {
+      "name": "Administrador de inicio de sesión (JavaFX)",
+      "summary": {
+        "es": "Gestión de usuarios con validación por archivo .txt; UI sencilla con alerts.",
+        "en": "User management with login validation from .txt file; simple JavaFX UI."
+      },
+      "tech": ["Java","JavaFX"]
+    },
+    {
+      "name": "Diseño de BD relacional (MySQL)",
+      "summary": {
+        "es": "AR, MER, Normalización, diseño físico, implementación, tablas y restricciones.",
+        "en": "Requirements, ER model, normalization, physical design, implementation."
+      },
+      "tech": ["MySQL","SQL"]
+    },
+    {
+      "name": "Weather Web + APIs",
+      "summary": {
+        "es": "Página web con HTML/CSS/JS que hace fetch a una API del tiempo.",
+        "en": "HTML/CSS/JS web that fetches a weather API."
+      },
+      "tech": ["HTML","CSS","JS","REST API","JSON"]
+    }
+  ],
+
+  "academics": {
+    "grade_avg_over_3_years": 8.5,
+    "note": "Media 8.5 en estudios IT, cursados mientras trabajaba."
+  },
+
+  "preferences": {
+    "target_market": "Suiza (PYMEs / startups)",
+    "onsite": "Deutschschweiz (Zürich y alrededores), remoto posible",
+    "notice_period": "Inmediata"
+  }
+}
+</script>
+
+
+<!-- ===== Fin Damian.AI ===== -->
+
+  </head>
+  <body>
+    <!-- Barra de navegacion -->
+    <nav class="navbar navbar-expand-md navbar-light">
+        <div class="container-fluid">
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar-toggler" aria-controls="navbarTogglerDemo01" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+          </button>
+          <div class="collapse navbar-collapse" id="navbar-toggler">
+            <a class="navbar-brand" href="#">
+                <img src="images/code-square.svg" width="50" alt="Logo de la página web">
+            </a>
+            <ul class="navbar-nav d-flex justify-content-center align-items-center">
+              <li class="nav-item">
+                <a class="nav-link active" aria-current="page" href="#sobre-mi">Sobre mi</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" href="#proyectos">Proyectos</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" href="#testimonios">Testimonios</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" href="#contacto">Contacto</a>
+              </li>
+              <li class="nav-item dropdown">
+  <a class="nav-link dropdown-toggle" href="#" id="languageDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+    🌐 Language
+  </a>
+  <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="languageDropdown">
+    <li><a class="dropdown-item" href="#" onclick="setLanguage('en')">English</a></li>
+    <li><a class="dropdown-item" href="#" onclick="setLanguage('de')">Deutsch</a></li>
+    <li><a class="dropdown-item" href="#" onclick="setLanguage('es')">Español</a></li>
+  </ul>
+</li>
+
+            </ul>
+            
+          </div>
+        </div>
+      </nav>
+      <!-- Seccion Hero -->
+      <section class="hero ">
+        <div class="hero-principal bootstrap d-flex flex-column justify-content-center align-items-center">
+            <img class="hero-imagen-perfil rounded-circle border border-2 border-dark-subtle" src="images/Foto cv cuadradaIA3.jpg" alt="Foto Damian">
+            <h1>Hola, soy Damián Conejos</h1>
+            <h2>Desarrollador de aplicaciones web y multiplataforma.</h2>
+        </div>
+        <div class="hero-inf">
+            <img class="hero-inf-img rounded-pill img-fluid " src="images/hero-inf.jpg" alt="Sector tech image">
+        </div>
+      </section>
+      <!-- Sobre mi -->
+      <section id="sobre-mi" class="sobre-mi seccion-oscura ">
+        <div class="contenedor">
+            <h2 class="seccion-titulo texto-blanco" id="titulo-sobre-mi">Conoce a Damián Conejos</h2>
+            <p class="seccion-texto " id="texto-sobre-mi">¡Hola! Soy Damián Conejos, desarrollador web y multiplataforma, con experiencia en Java, HTML, CSS y MySQL. <br>Tras haber trabajado como animador de Motion Graphics y editor de Video durante años, descubrí una nueva pasión en el campo IT.
+                <br>
+                Siempre estoy en busca de nuevos retos y oportunidades para seguir aprendiendo y creciendo en el mundo del desarrollo.
+                <br>
+                Si quieres conocer más sobre mi trabajo, ¡échale un vistazo a mis proyectos!</p>
+        </div>
+      </section>
+      <!-- Experiencia -->
+      <section class="experiencia seccion-clara ">
+        <div class="container text-center">
+            <div class="row">
+                <!-- Desarrollo web -->
+                <div class="columna col-12 col-md-4">
+                    <i class="bi bi-laptop"></i>
+                    <p class="experiencia-titulo">Development</p>
+                    <div class="badges-contenedor">
+                        <span class="badge text-bg-primary">HTML</span>
+                        <span class="badge text-bg-primary">CSS</span>
+                        <span class="badge text-bg-primary">Java</span>
+                        <span class="badge text-bg-primary">MySQL</span>
+                    </div>
+                </div>
+                <!-- Animacion -->
+                <div class="columna col-12 col-md-4">
+                    <i class="bi bi-circle-square"></i>
+                    <p class="experiencia-titulo">Tools</p>
+                    <div class="badges-contenedor">
+                        <span class="badge text-bg-primary">After Effects</span>
+                        <span class="badge text-bg-primary">Photoshop</span>
+                        <span class="badge text-bg-primary">Premiere</span>
+                        <span class="badge text-bg-primary">Ilustrator</span>
+                    </div>                </div>
+                <!-- Estudios -->
+                <div class="columna col-12 col-md-4">
+                    <i class="bi bi-book"></i>
+                    <p class="experiencia-titulo">Studies</p>
+                    <div class="badges-contenedor">
+                        <span class="badge text-bg-primary">FP-II Web Developer</span>
+                        <span class="badge text-bg-primary">FP-II 2D & 3D Animation</span>
+                        <span class="badge text-bg-primary">FP-I Image & Sound</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+      </section>
+      <!-- Proyectos -->
+       <section id="proyectos" class="proyectos-recientes seccion-clara d-flex flex-column">
+        <h2 class="seccion-titulo texto-negro" id="titulo-proyectos">Mis proyectos recientes</h2>
+        <h3 class="seccion-descripcion" id="descripcion-proyectos">Estos son algunos de mis últimos proyectos...</h3>
+        <!-- Galeria de proyectos -->
+         <div class="container text-center proyectos-contenedor">
+            <div class="row">
+                <!-- Proyecto 1 -->
+                <div class="col-12 col-md-3 col-lg-3">
+                    <div class="proyecto">
+                        <img src="images/Proyecto1.png" alt="Proyecto 1">
+                        <div class="overlay">
+                            <p>Web 1</p>
+                            <div class="iconos-contenedor">
+                                <a href="https://github.com/DamCone" target="_blank" rel="noopener noreferrer">
+                                    <i class="bi bi-github"></i>
+                                </a>
+                                <a href="http://damianconejostrabajoslm.kesug.com/FloatExtra/index.html" target="_blank" rel="noopener noreferrer">
+                                    <i class="bi bi-laptop"></i>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Proyecto 2 -->
+                <div class="col-12 col-md-3 col-lg-3">
+                    <div class="proyecto">
+                        <img src="images/Proyecto2.png" alt="Proyecto 1">
+                        <div class="overlay">
+                            <p>Web 2</p>
+                            <div class="iconos-contenedor">
+                                <a href="https://github.com/DamCone" target="_blank" rel="noopener noreferrer">
+                                    <i class="bi bi-github"></i>
+                                </a>
+                                <a href="http://damianconejostrabajoslm.kesug.com/practica5.1/index.html" target="_blank" rel="noopener noreferrer">
+                                    <i class="bi bi-laptop"></i>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Proyecto 3 -->
+                <div class="col-12 col-md-3 col-lg-3">
+                    <div class="proyecto">
+                        <img src="images/Proyecto3.png" alt="Proyecto 1">
+                        <div class="overlay">
+                            <p>Web 3</p>
+                            <div class="iconos-contenedor">
+                                <a href="https://github.com/DamCone" target="_blank" rel="noopener noreferrer">
+                                    <i class="bi bi-github"></i>
+                                </a>
+                                <a href="http://damianconejostrabajoslm.kesug.com/Formulario/index.html" target="_blank" rel="noopener noreferrer">
+                                    <i class="bi bi-laptop"></i>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Proyecto 4 -->
+                <div class="col-12 col-md-3 col-lg-3">
+                    <div class="proyecto">
+                        <img src="images/Proyecto4.png" alt="Proyecto 1">
+                        <div class="overlay">
+                            <p>Animations</p>
+                            <div>
+                                <a href="http://damianconejostrabajoslm.kesug.com/FloatExtra/index.html" target="_blank" rel="noopener noreferrer">
+                                    <i class="bi bi-laptop"></i>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+         </div>
+         <div>
+            <a href="http://damianconejostrabajoslm.kesug.com/indexX.html" target="_blank" rel="noopener noreferrer">
+                <button id="btn-ver-mas" type="button" class="btn btn-info">Ver mas proyectos
+                    <i class="bi bi-arrow-right-circle-fill"></i>
+                </button>
+            </a>
+         </div>
+       </section>
+       <!-- Testimonios -->
+        <section id="testimonios" class="testimonios seccion-clara">
+            <h2 class="seccion-titulo" id="titulo-testimonios">Testimonios</h2>
+            <h3 class="seccion-descripcion" id="descripcion-testimonios">Estos son algunos testimonios de mis clientes...</h3>
+
+            <!-- Carrusel -->
+
+            <div id="testimonios-carousel" class="carousel carousel-dark slide" data-bs-ride="carousel">
+                <div class="carousel-inner">
+                  <div class="carousel-item active">
+                    <div class="container">
+                        <img class="testimonio-imagen rounded-circle" src="images/BOGDAN_OFICINAS2.png" alt="Cliente1">
+                        <p class="testimonio-texto">Lorem ipsum dolor sit amet, consectetur adipiscing elit. Quisque tortor eros, aliquet in placerat quis, vulputate ac massa. Maecenas in urna vel dui dignissim viverra.</p>
+                        <div class="testimonio-info">
+                            <p class="cliente">Bogdan Tapu</p>
+                            <p class="cargo">CEO de World Challenge Game</p>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="carousel-item">
+                    <div class="container">
+                        <img class="testimonio-imagen rounded-circle" src="images/BOGDAN_OFICINAS2.png" alt="Cliente1">
+                        <p class="testimonio-texto">Lorem ipsum dolor sit amet, consectetur adipiscing elit. Quisque tortor eros, aliquet in placerat quis, vulputate ac massa. Maecenas in urna vel dui dignissim viverra.</p>
+                        <div class="testimonio-info">
+                            <p class="cliente">Bogdan Tapu</p>
+                            <p class="cargo">CEO de World Challenge Game</p>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="carousel-item">
+                    <div class="container">
+                        <img class="testimonio-imagen rounded-circle" src="images/BOGDAN_OFICINAS2.png" alt="Cliente1">
+                        <p class="testimonio-texto">Lorem ipsum dolor sit amet, consectetur adipiscing elit. Quisque tortor eros, aliquet in placerat quis, vulputate ac massa. Maecenas in urna vel dui dignissim viverra.</p>
+                        <div class="testimonio-info">
+                            <p class="cliente">Bogdan Tapu</p>
+                            <p class="cargo">CEO de World Challenge Game</p>
+                        </div>
+                    </div>
+                  </div>
+                </div>
+                <button class="carousel-control-prev" type="button" data-bs-target="#testimonios-carousel" data-bs-slide="prev">
+                  <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+                  <span class="visually-hidden">Anterior</span>
+                </button>
+                <button class="carousel-control-next" type="button" data-bs-target="#testimonios-carousel" data-bs-slide="next">
+                  <span class="carousel-control-next-icon" aria-hidden="true"></span>
+                  <span class="visually-hidden">Siguiente</span>
+                </button>
+              </div>
+        </section>
+        <!-- Contacto -->
+        <section id="contacto" class="contacto seccion-oscura">
+            <div class="container">
+                <div class="container text-center rectangulo d-flex justify-content-evenly">
+                    <div class="row">
+                        <div class="seccion-titulo">
+                            Let's talk! | | Reden wir! | | ¡Hablemos! 
+                        </div>
+                        <div>
+                            <button type="button" class="btn btn-secondary" onclick="copiarContenido()" data-bs-container="body" data-bs-toggle="popover" data-bs-placement="top" data-bs-content="¡Copiado!">
+  <i class="bi bi-clipboard-fill" id="miTexto"> Damiconejos@gmail.com</i>
+</button>
+
+<script>
+  const copiarContenido = async () => {
+    try {
+      let texto = document.getElementById('miTexto').innerText;
+      await navigator.clipboard.writeText(texto);
+      console.log('Contenido copiado al portapapeles');
+
+      const popoverTrigger = document.querySelector('[data-bs-toggle="popover"]');
+      const popover = bootstrap.Popover.getOrCreateInstance(popoverTrigger);
+      popover.show();
+
+      setTimeout(() => {
+        popover.hide();
+      }, 1500);
+    } catch (err) {
+      console.error('Error al copiar: ', err);
+    }
+  };
+</script>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <!-- Pie de pagina -->
+         <footer class="seccion-oscura d-flex flex-column align-items-center justify-content-center">
+            <i class="bi bi-code-square"></i>
+            <p class="footer-texto text-center" id="texto-footer">Aprendo y creo todos los días.<br>Creemos un proyecto juntos.</p>
+            <div class="iconos-redes-sociales d-flex flex-wrap align-items-center justify-content-center">
+                <a href="https://www.fiverr.com/users/daminconejos/seller_dashboard" target="_blank" rel="noopener noreferrer">
+                    <img class="bi bi-fiverr"src="images/fiverr-icon.png" alt="icono fiverr">
+                </a>
+                <a href="https://www.linkedin.com/in/dami%C3%A1n-conejos-426250238/?locale=en_US" target="_blank" rel="noopener noreferrer">
+                    <img class="bi-linkedin"src="images/linkedin.svg" alt="icono fiverr">
+                </a>
+                <a href="https://github.com/DamCone" target="_blank" rel="noopener noreferrer">
+                    <img class="bi-linkedin"src="images/github-142-svgrepo-com.svg" alt="icono fiverr">
+                </a>
+            </div>
+            <div class="derechos">Created by Damian Conejos (2025) &#169;</div>
+         </footer>
+    <!-- Bootstrap Bundle con Popper (necesario para el dropdown) -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- Script de traducción de idiomas -->
+<script>
+  const textos = {
+    en: {
+      sobreMi: "About me",
+      proyectos: "Projects",
+      testimonios: "Testimonials",
+      contacto: "Contact",
+      h1: "Hi, I'm Damian Conejos",
+      h2: "Web and multiplatform app developer.",
+      btnVerMas: "See more projects",
+      pie: "I learn and create every day. <br>Let's build a project together.",
+      tituloSobreMi: "Meet Damian Conejos",
+      textoSobreMi: "Hi! I'm Damian Conejos, web and multiplatform developer with experience in Java, HTML, CSS and MySQL.",
+      tituloProyectos: "My recent projects",
+      descripcionProyectos: "These are some of my latest works...",
+      tituloTestimonios: "Testimonials",
+      descripcionTestimonios: "These are some reviews from my clients..."
+    },
+    es: {
+      sobreMi: "Sobre mi",
+      proyectos: "Proyectos",
+      testimonios: "Testimonios",
+      contacto: "Contacto",
+      h1: "Hola, soy Damián Conejos",
+      h2: "Desarrollador de aplicaciones web y multiplataforma.",
+      btnVerMas: "Ver más proyectos",
+      pie: "Aprendo y creo todos los días. <br>Creemos un proyecto juntos.",
+      tituloSobreMi: "Conoce a Damián Conejos",
+      textoSobreMi: "¡Hola! Soy Damián Conejos, desarrollador web y multiplataforma, con experiencia en Java, HTML, CSS y MySQL.",
+      tituloProyectos: "Mis proyectos recientes",
+      descripcionProyectos: "Estos son algunos de mis últimos proyectos...",
+      tituloTestimonios: "Testimonios",
+      descripcionTestimonios: "Estos son algunos testimonios de mis clientes..."
+    },
+    de: {
+      sobreMi: "Über mich",
+      proyectos: "Projekte",
+      testimonios: "Referenzen",
+      contacto: "Kontakt",
+      h1: "Hallo, ich bin Damian Conejos",
+      h2: "Web- und plattformübergreifender App-Entwickler.",
+      btnVerMas: "Mehr Projekte ansehen",
+      pie: "Ich lerne und kreiere jeden Tag. <br>Lass uns gemeinsam ein Projekt starten.",
+      tituloSobreMi: "Lerne Damian Conejos kennen",
+      textoSobreMi: "Hallo! Ich bin Damian Conejos, Entwickler für Web- und plattformübergreifende Anwendungen mit Erfahrung in Java, HTML, CSS und MySQL.",
+      tituloProyectos: "Meine aktuellen Projekte",
+      descripcionProyectos: "Hier sind einige meiner neuesten Arbeiten...",
+      tituloTestimonios: "Referenzen",
+      descripcionTestimonios: "Hier sind einige Rückmeldungen meiner Kunden..."
+    }
+  };
+
+  function setLanguage(lang) {
+    // LÍNEA AÑADIDA: Actualiza el atributo 'lang' del <html>
+    // El script de Damian.AI detectará este cambio y se actualizará solo.
+    document.documentElement.setAttribute('lang', lang);
+
+    const t = textos[lang];
+    document.querySelector('a[href="#sobre-mi"]').innerText = t.sobreMi;
+    document.querySelector('a[href="#proyectos"]').innerText = t.proyectos;
+    document.querySelector('a[href="#testimonios"]').innerText = t.testimonios;
+    document.querySelector('a[href="#contacto"]').innerText = t.contacto;
+    document.querySelector(".hero-principal h1").innerText = t.h1;
+    document.querySelector(".hero-principal h2").innerText = t.h2;
+    document.getElementById("btn-ver-mas").innerHTML = `${t.btnVerMas} <i class="bi bi-arrow-right-circle-fill"></i>`;
+    document.getElementById("texto-footer").innerHTML = t.pie;
+    document.getElementById("titulo-sobre-mi").innerText = t.tituloSobreMi;
+    document.getElementById("texto-sobre-mi").innerText = t.textoSobreMi;
+    document.getElementById("titulo-proyectos").innerText = t.tituloProyectos;
+    document.getElementById("descripcion-proyectos").innerText = t.descripcionProyectos;
+    document.getElementById("titulo-testimonios").innerText = t.tituloTestimonios;
+    document.getElementById("descripcion-testimonios").innerText = t.descripcionTestimonios;
+  }
+
+  // Establecer inglés como idioma inicial
+  document.addEventListener("DOMContentLoaded", function () {
+    setLanguage('en');
+  });
+</script>
+
+
+  </body>
+</html>
